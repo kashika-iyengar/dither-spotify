@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DITHER / SPOTIFY</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050505;color:#fff;font-family:Arial,Helvetica,sans-serif}
+  body{cursor:crosshair}
+  #visual{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated}
+  #grain{position:fixed;inset:0;pointer-events:none;opacity:.13;background-image:radial-gradient(#fff .6px,transparent .7px);background-size:4px 4px;mix-blend-mode:screen}
+  .ui{position:fixed;z-index:5;inset:0;pointer-events:none}
+  button,input{font:inherit}
+  button{pointer-events:auto}
+  .brand{position:absolute;left:22px;top:18px;font-size:11px;letter-spacing:.18em;font-weight:800}
+  .status{position:absolute;left:22px;top:39px;font-size:9px;letter-spacing:.12em;opacity:.65}
+  nav{position:absolute;right:22px;top:18px;display:flex;gap:6px}
+  nav button,.connect,.moodBtn,.control,.searchBtn{
+    border:1px solid rgba(255,255,255,.32);background:rgba(0,0,0,.38);color:#fff;
+    padding:8px 11px;font-size:9px;letter-spacing:.12em;cursor:pointer;backdrop-filter:blur(8px)
+  }
+  nav button.active{background:#fff;color:#000}
+  .panel{position:absolute;pointer-events:auto;display:none}
+  .panel.show{display:block}
+  #searchPanel{right:22px;top:60px;width:min(440px,calc(100vw - 44px));background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.25);padding:14px;backdrop-filter:blur(15px)}
+  #searchInput{width:100%;background:#111;border:1px solid #444;color:#fff;padding:12px;outline:none}
+  .searchRow{display:flex;gap:7px;margin-bottom:10px}
+  .searchBtn{white-space:nowrap}
+  #results{max-height:55vh;overflow:auto}
+  .result{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.1);cursor:pointer}
+  .result img{width:42px;height:42px;object-fit:cover;background:#222}
+  .result .name{font-size:11px;font-weight:700}
+  .result .artist{font-size:9px;opacity:.6;margin-top:3px}
+  #moodPanel{right:22px;top:60px;width:min(500px,calc(100vw - 44px));background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.25);padding:14px;backdrop-filter:blur(15px)}
+  .moods{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+  .moodBtn{padding:11px 5px;text-align:left}
+  .moodBtn.active{background:#fff;color:#000}
+  .now{position:absolute;left:22px;bottom:96px;max-width:420px}
+  .now .eyebrow{font-size:8px;letter-spacing:.2em;opacity:.55}
+  #trackName{font-size:22px;font-weight:800;line-height:1.05;margin-top:6px;text-transform:uppercase}
+  #artistName{font-size:10px;opacity:.7;margin-top:5px}
+  #moodName{font-size:9px;letter-spacing:.15em;margin-top:10px}
+  .player{position:absolute;left:22px;right:22px;bottom:18px;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;pointer-events:auto}
+  .controls{display:flex;gap:5px}
+  .control{min-width:35px;text-align:center;padding:8px}
+  #progress{width:100%;accent-color:#fff}
+  .time{font-size:8px;opacity:.65;white-space:nowrap}
+  .hint{position:absolute;right:22px;bottom:96px;font-size:8px;letter-spacing:.08em;opacity:.5;text-align:right}
+  #login{position:absolute;right:22px;top:60px;display:none}
+  #login.show{display:block}
+  .toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:11px;letter-spacing:.08em;background:#000;padding:12px 15px;border:1px solid #555;display:none}
+  .toast.show{display:block}
+  @media(max-width:700px){
+    .moods{grid-template-columns:repeat(3,1fr)}
+    #trackName{font-size:16px}
+    .hint{display:none}
+    .player{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<canvas id="visual"></canvas>
+<div id="grain"></div>
+
+<div class="ui">
+  <div class="brand">DITHER / SPOTIFY</div>
+  <div class="status" id="status">DISCONNECTED</div>
+  <div class="status" id="deviceStatus" style="top:55px;max-width:360px"></div>
+
+  <nav>
+    <button id="homeBtn" class="active">HOME</button>
+    <button id="searchBtn">SEARCH</button>
+    <button id="moodsBtn">MOODS</button>
+    <button id="connectBtn">CONNECT SPOTIFY</button>
+  </nav>
+
+  <div id="searchPanel" class="panel">
+    <div class="searchRow">
+      <input id="searchInput" placeholder="Search any Spotify song / artist">
+      <button class="searchBtn" id="doSearch">SEARCH</button>
+    </div>
+    <div id="results"><div style="padding:12px;font-size:9px;opacity:.55">Connect Spotify, then search for any track.</div></div>
+  </div>
+
+  <div id="moodPanel" class="panel">
+    <div class="moods" id="moods"></div>
+  </div>
+
+  <div class="now">
+    <div class="eyebrow">NOW PLAYING</div>
+    <div id="trackName">NOTHING PLAYING</div>
+    <div id="artistName">Connect Spotify and choose a track</div>
+    <div id="moodName">MOOD / —</div>
+  </div>
+
+  <div class="hint">PIXEL FIELD · MOOD + PLAYBACK REACTIVITY</div>
+
+  <div class="player">
+    <div class="controls">
+      <button class="control" id="prev">◀◀</button>
+      <button class="control" id="stop">■</button>
+      <button class="control" id="play">▶</button>
+      <button class="control" id="next">▶▶</button>
+    </div>
+    <input id="progress" type="range" min="0" max="1000" value="0">
+    <div class="time"><span id="cur">0:00</span> / <span id="dur">0:00</span></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   1. SPOTIFY SETUP — EDIT THESE TWO LINES ONLY
+   ========================================================= */
+const SPOTIFY = {
+  CLIENT_ID: '026b0681bdf34a029180e4bac6fdf9e8',
+
+  // This MUST match the Redirect URI in your Spotify Developer app.
+  // Live Server should open this exact address:
+  REDIRECT_URI: 'http://127.0.0.1:5500/index.html',
+
+  SCOPES: [
+    'streaming',
+    'user-read-playback-state',
+    'user-modify-playback-state',
+    'user-read-currently-playing'
+  ].join(' ')
+};
+
+/* =========================================================
+   2. MOODS
+   Each mood has a separate visual formula + palette.
+   ========================================================= */
+const MOODS = {
+  DREAMY:{q:'dreamy ambient',c:'#91a7ff',desc:'soft drifting clouds'},
+  HEARTBROKEN:{q:'sad heartbreak',c:'#7588a8',desc:'falling fragments'},
+  EUPHORIC:{q:'euphoric dance',c:'#efff45',desc:'expanding energy'},
+  DARK:{q:'dark electronic',c:'#9d48ff',desc:'dense black-hole field'},
+  NOSTALGIC:{q:'nostalgic indie',c:'#ff9e54',desc:'coarse CRT scan'},
+  CHAOTIC:{q:'chaotic electronic',c:'#ff3d70',desc:'jitter + fractured blocks'},
+  LOVESICK:{q:'romantic lovesick',c:'#ff63bd',desc:'pulsing rings'},
+  PEACEFUL:{q:'peaceful ambient',c:'#72dfc0',desc:'slow mist'},
+  DISSOCIATIVE:{q:'experimental ambient',c:'#b56dff',desc:'offset ghost layers'},
+  HOPEFUL:{q:'uplifting indie',c:'#ffe66b',desc:'rising rays'},
+  ANGRY:{q:'aggressive electronic',c:'#ff593d',desc:'hard impact ripples'},
+  MYSTERIOUS:{q:'mysterious alternative',c:'#5fc9ff',desc:'spiral field'}
+};
+
+const state = {
+  token:null, player:null, deviceId:null, connected:false,
+  playing:false, position:0, duration:1, lastStateAt:0,
+  track:null, mood:'DREAMY', manualMood:null,
+  seed:1, intensity:0.45, bass:.2, mid:.2, high:.2, energy:.3
+};
+
+const $ = id => document.getElementById(id);
+const canvas = $('visual');
+const ctx = canvas.getContext('2d', {alpha:false});
+let W=0,H=0,SCALE=3;
+
+function resize(){
+  W=Math.max(160,Math.floor(innerWidth/SCALE));
+  H=Math.max(100,Math.floor(innerHeight/SCALE));
+  canvas.width=W; canvas.height=H;
+}
+addEventListener('resize',resize); resize();
+
+function toast(t){
+  $('toast').textContent=t;
+  $('toast').classList.add('show');
+  clearTimeout(toast.timer); toast.timer=setTimeout(()=>$('toast').classList.remove('show'),2600);
+}
+function status(t){
+  $('status').textContent=t;
+  $('deviceStatus').textContent=state.deviceId ? 'DEVICE: '+state.deviceId.slice(0,8)+'…' : '';
+}
+function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+
+function hash(s){
+  let h=2166136261;
+  for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}
+  return (h>>>0)/4294967296;
+}
+function classify(track){
+  if(state.manualMood) return state.manualMood;
+  const s=((track?.name||'')+' '+(track?.artists||[]).map(a=>a.name).join(' ')).toLowerCase();
+  const words={
+    DREAMY:['dream','dreamy','cloud','sleep','ambient','moon'],
+    HEARTBROKEN:['sad','heart','broken','cry','alone','goodbye'],
+    EUPHORIC:['euphor','party','dance','summer','energy','fire'],
+    DARK:['dark','night','shadow','void','witch','black'],
+    NOSTALGIC:['old','retro','90s','2000','nostalgia','memory'],
+    CHAOTIC:['chaos','punk','riot','noise','hardcore'],
+    LOVESICK:['love','lover','kiss','romance','baby','darling'],
+    PEACEFUL:['peace','calm','quiet','relax','soft'],
+    DISSOCIATIVE:['strange','experimental','dream','echo','dissolve'],
+    HOPEFUL:['hope','rise','sun','light','future','better'],
+    ANGRY:['anger','angry','rage','fight','hate','destroy'],
+    MYSTERIOUS:['mystery','secret','unknown','stranger','hidden']
+  };
+  let best='DREAMY',score=0;
+  for(const [m,arr] of Object.entries(words)){
+    const n=arr.reduce((x,w)=>x+(s.includes(w)?1:0),0);
+    if(n>score){score=n;best=m}
+  }
+  if(score===0){
+    const keys=Object.keys(MOODS);
+    best=keys[Math.floor(hash((track?.id||'')+(track?.name||''))*keys.length)];
+  }
+  return best;
+}
+
+function colorRGB(hex){
+  const n=parseInt(hex.slice(1),16);
+  return [(n>>16)&255,(n>>8)&255,n&255];
+}
+const BAYER=[
+ [0,8,2,10],
+ [12,4,14,6],
+ [3,11,1,9],
+ [15,7,13,5]
+];
+
+/* =========================================================
+   3. STRONG PIXEL DITHER ENGINE
+   The entire screen is intentionally low-res and quantized.
+   Playback state changes the field continuously.
+   ========================================================= */
+function field(t){
+  const mood=state.mood;
+  const [r,g,b]=colorRGB(MOODS[mood].c);
+  const bass=state.bass, mid=state.mid, high=state.high;
+  const energy=state.energy;
+  const cx=W*.5, cy=H*.5;
+
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      let nx=(x-cx)/H, ny=(y-cy)/H;
+      let v=0;
+
+      if(mood==='DREAMY'){
+        const d=Math.hypot(nx*.82,ny*.82);
+        v=.5+.5*Math.sin(d*10-t*.7+Math.sin(ny*5+t)*1.5);
+        v+=.22*Math.sin(nx*7+t*.45)*Math.sin(ny*4-t*.3);
+        v+=bass*.30*Math.sin(d*22-t*1.8);
+      } else if(mood==='HEARTBROKEN'){
+        v=.5+.5*Math.sin((ny+Math.sin(nx*4+t)*.12)*18+t*.35);
+        v+=.25*Math.sin(nx*15+t)*Math.exp(-Math.abs(ny)*1.5);
+        v-=Math.max(0,Math.abs(nx)-.15)*.7;
+        v+=bass*.35*Math.sin((nx+ny)*30-t*2);
+      } else if(mood==='EUPHORIC'){
+        const d=Math.hypot(nx,ny);
+        v=.5+.5*Math.sin(d*(30+energy*28)-t*(5+bass*10));
+        v+=.3*Math.sin(nx*18+t*4)*Math.sin(ny*18-t*3);
+        v+=bass*.5;
+      } else if(mood==='DARK'){
+        const d=Math.hypot(nx*.9,ny*.9);
+        v=.5+.5*Math.sin(d*26-t*.9);
+        v+=.35*Math.exp(-d*3.8)*(1+bass*2);
+        v-=.22*Math.sin(d*70+t*1.5)*high;
+      } else if(mood==='NOSTALGIC'){
+        v=.5+.5*Math.sin(ny*70+t*.7);
+        v+=.28*Math.sin(nx*10+t*.3);
+        v+=.20*Math.sin((nx+ny)*25);
+        v+=mid*.3;
+      } else if(mood==='CHAOTIC'){
+        v=.5+.5*Math.sin(nx*30+t*5+Math.sin(ny*12+t)*4);
+        v+=.35*Math.sin(ny*37-t*6+Math.sin(nx*9)*5);
+        v+=high*.45*Math.sin((nx-ny)*80+t*12);
+      } else if(mood==='LOVESICK'){
+        const d=Math.hypot(nx,ny);
+        v=.5+.5*Math.sin(d*38-t*(2+bass*7));
+        v+=.28*Math.sin(nx*12+t*2)*Math.sin(ny*12-t*1.5);
+        v+=bass*.4;
+      } else if(mood==='PEACEFUL'){
+        const d=Math.hypot(nx,ny);
+        v=.45+.28*Math.sin(nx*6+t*.25)+.25*Math.sin(ny*4-t*.2);
+        v+=.3*Math.exp(-d*2)*(Math.sin(d*12-t)+1)/2;
+      } else if(mood==='DISSOCIATIVE'){
+        const a=Math.atan2(ny,nx),d=Math.hypot(nx,ny);
+        v=.5+.5*Math.sin(d*28+a*5-t*1.1);
+        v+=.25*Math.sin(nx*21+t*1.7)+.2*Math.sin((nx+.15)*21-t*1.4);
+        v+=high*.4;
+      } else if(mood==='HOPEFUL'){
+        v=.5+.5*Math.sin((ny+1.1)*18-t*(1+energy*4));
+        v+=.3*Math.max(0,1-Math.abs(nx))*Math.sin(nx*14+t);
+        v+=bass*.25+mid*.25;
+      } else if(mood==='ANGRY'){
+        const d=Math.hypot(nx,ny);
+        v=.5+.5*Math.sin(d*45-t*(8+bass*12));
+        v+=.35*Math.sin(nx*55+t*11);
+        v+=.25*Math.sin(ny*23-t*9);
+        v+=high*.45;
+      } else {
+        const d=Math.hypot(nx,ny),a=Math.atan2(ny,nx);
+        v=.5+.5*Math.sin(d*30+a*9-t*1.2);
+        v+=.25*Math.sin(d*70-t*3);
+      }
+
+      v=Math.max(0,Math.min(1,v));
+      // 4x4 ordered Bayer threshold = unmistakable pixel dithering.
+      const threshold=(BAYER[y&3][x&3]+.5)/16;
+      const lit=v>threshold;
+
+      if(lit){
+        // Slight brightness modulation makes playback changes obvious.
+        const boost=1+Math.min(.5,energy*.45);
+        ctx.fillStyle=`rgb(${Math.min(255,r*boost)|0},${Math.min(255,g*boost)|0},${Math.min(255,b*boost)|0})`;
+      }else{
+        ctx.fillStyle='#030303';
+      }
+      ctx.fillRect(x,y,1,1);
+    }
+  }
+
+  // Large block pulses: the “reaction” is visible even at a glance.
+  if(state.playing){
+    const pulse=(.5+.5*Math.sin(t*(5+bass*8)))*(10+energy*25);
+    ctx.fillStyle=`rgba(${r},${g},${b},.16)`;
+    ctx.fillRect((W-pulse)/2,(H-pulse)/2,pulse,pulse);
+  }
+}
+
+let start=performance.now();
+function render(now){
+  const t=(now-start)/1000;
+  field(t);
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+
+/* =========================================================
+   4. PLAYBACK REACTIVITY
+   Spotify's browser SDK does not expose raw PCM/FFT data.
+   These envelopes are driven by playback position + track seed,
+   so the visuals remain reactive without falsely claiming FFT.
+   ========================================================= */
+function updateReaction(){
+  const p=state.duration?state.position/state.duration:0;
+  const seed=state.seed;
+  const beat=Math.pow(Math.max(0,Math.sin(p*48+seed*9)),8);
+  const slow=.5+.5*Math.sin(p*12+seed*2);
+  state.bass=.16+beat*.78;
+  state.mid=.18+(.5+.5*Math.sin(p*31+seed))* .45;
+  state.high=.12+(.5+.5*Math.sin(p*67+seed*3))* .48;
+  state.energy=.2+(.4*slow)+(.35*beat);
+}
+
+/* =========================================================
+   5. SPOTIFY PKCE AUTH
+   ========================================================= */
+function randomString(n=64){
+  const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  const a=new Uint8Array(n); crypto.getRandomValues(a);
+  return [...a].map(x=>chars[x%chars.length]).join('');
+}
+async function sha256(v){return crypto.subtle.digest('SHA-256',new TextEncoder().encode(v))}
+function base64url(buf){
+  return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+async function login(){
+  if(SPOTIFY.CLIENT_ID.includes('PASTE_')){
+    toast('ADD YOUR SPOTIFY CLIENT ID FIRST');
+    return;
+  }
+  const verifier=randomString();
+  sessionStorage.setItem('pkce_verifier',verifier);
+  const challenge=base64url(await sha256(verifier));
+  const url='https://accounts.spotify.com/authorize?'+new URLSearchParams({
+    client_id:SPOTIFY.CLIENT_ID,
+    response_type:'code',
+    redirect_uri:SPOTIFY.REDIRECT_URI,
+    code_challenge_method:'S256',
+    code_challenge:challenge,
+    scope:SPOTIFY.SCOPES
+  });
+  location.href=url;
+}
+async function handleCallback(){
+  const p=new URLSearchParams(location.search);
+  const code=p.get('code');
+  if(!code)return;
+  const verifier=sessionStorage.getItem('pkce_verifier');
+  if(!verifier)return;
+  try{
+    const body=new URLSearchParams({
+      client_id:SPOTIFY.CLIENT_ID,
+      grant_type:'authorization_code',
+      code,
+      redirect_uri:SPOTIFY.REDIRECT_URI,
+      code_verifier:verifier
+    });
+    const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+    const d=await r.json();
+    if(!d.access_token)throw new Error(d.error_description||'Token failed');
+    state.token=d.access_token;
+    history.replaceState({},'',SPOTIFY.REDIRECT_URI);
+    sessionStorage.removeItem('pkce_verifier');
+    initSpotify();
+  }catch(e){toast('SPOTIFY LOGIN FAILED: '+e.message)}
+}
+
+function api(path,opts={}){
+  return fetch('https://api.spotify.com/v1'+path,{
+    ...opts,
+    headers:{Authorization:'Bearer '+state.token,...(opts.headers||{})}
+  });
+}
+
+function initSDK(){
+  if(window.Spotify){
+    createPlayer();
+    return;
+  }
+  status('LOADING SPOTIFY PLAYER...');
+  window.onSpotifyWebPlaybackSDKReady=()=>createPlayer();
+  const s=document.createElement('script');
+  s.src='https://sdk.scdn.co/spotify-player.js';
+  s.async=true;
+  s.onerror=()=>{ status('SDK LOAD FAILED'); toast('SPOTIFY PLAYER SDK COULD NOT LOAD'); };
+  document.head.appendChild(s);
+}
+
+function createPlayer(){
+  if(state.player || !state.token) return;
+
+  state.player=new Spotify.Player({
+    name:'DITHER / SPOTIFY',
+    getOAuthToken:cb=>cb(state.token),
+    volume:.75
+  });
+
+  state.player.addListener('ready',async({device_id})=>{
+    state.deviceId=device_id;
+    state.connected=true;
+    status('PLAYER READY · TRANSFERRING');
+    toast('SPOTIFY PLAYER READY');
+    try{
+      // Spotify requires playback to be transferred to the browser device.
+      const r=await api('/me/player',{
+        method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          device_ids:[device_id],
+          play:false
+        })
+      });
+      if(!r.ok){
+        const txt=await r.text();
+        throw new Error('Transfer '+r.status+' '+txt);
+      }
+      status('SPOTIFY CONNECTED · READY');
+    }catch(e){
+      status('CONNECTED · TRANSFER FAILED');
+      toast('DEVICE TRANSFER FAILED: '+e.message);
+      console.error(e);
+    }
+  });
+
+  state.player.addListener('not_ready',({device_id})=>{
+    state.connected=false;
+    status('PLAYER OFFLINE');
+    toast('SPOTIFY PLAYER DEVICE WENT OFFLINE');
+    console.warn('Spotify device offline:',device_id);
+  });
+
+  state.player.addListener('initialization_error',({message})=>{
+    status('SDK INIT ERROR');
+    toast('SDK ERROR: '+message);
+    console.error(message);
+  });
+
+  state.player.addListener('authentication_error',({message})=>{
+    status('SPOTIFY AUTH ERROR');
+    toast('AUTH ERROR: '+message);
+    console.error(message);
+  });
+
+  state.player.addListener('account_error',({message})=>{
+    status('ACCOUNT NOT ELIGIBLE');
+    toast('SPOTIFY ACCOUNT ERROR: '+message);
+    console.error(message);
+  });
+
+  state.player.addListener('playback_error',({message})=>{
+    status('PLAYBACK ERROR');
+    toast('PLAYBACK ERROR: '+message);
+    console.error(message);
+  });
+
+  state.player.addListener('player_state_changed',s=>{
+    if(!s)return;
+    state.playing=!s.paused;
+    state.position=s.position;
+    state.duration=s.duration;
+    state.lastStateAt=performance.now();
+    if(s.track_window?.current_track) setTrack(s.track_window.current_track);
+    updatePlayButton();
+  });
+
+  state.player.connect().then(ok=>{
+    if(ok) status('SDK CONNECTED · WAITING FOR DEVICE');
+    else {
+      status('SDK CONNECTION FAILED');
+      toast('SPOTIFY SDK COULD NOT CONNECT');
+    }
+  });
+}
+async function initSpotify(){
+  status('CONNECTING SPOTIFY...');
+  initSDK();
+}
+
+async function playTrack(uri){
+  if(!state.token){
+    toast('CONNECT SPOTIFY FIRST');
+    return;
+  }
+  if(!state.player || !state.deviceId){
+    toast('SPOTIFY PLAYER IS NOT READY YET');
+    status('WAITING FOR PLAYER DEVICE');
+    return;
+  }
+
+  try{
+    // Must be called from the user's click path to satisfy browser autoplay rules.
+    if(state.player.activateElement) await state.player.activateElement();
+
+    status('STARTING PLAYBACK...');
+
+    const transfer=await api('/me/player',{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        device_ids:[state.deviceId],
+        play:false
+      })
+    });
+
+    if(!transfer.ok){
+      const msg=await transfer.text();
+      throw new Error('DEVICE TRANSFER '+transfer.status+': '+msg);
+    }
+
+    const play=await api('/me/player/play?device_id='+encodeURIComponent(state.deviceId),{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({uris:[uri],position_ms:0})
+    });
+
+    if(!play.ok){
+      const msg=await play.text();
+      throw new Error('PLAY '+play.status+': '+msg);
+    }
+
+    state.playing=true;
+    updatePlayButton();
+    status('PLAYING');
+    setTimeout(async()=>{
+      try{
+        const r=await api('/me/player');
+        if(r.ok){
+          const s=await r.json();
+          if(s?.item) setTrack(s.item);
+          state.playing=!!s?.is_playing;
+          state.position=s?.progress_ms||0;
+          state.duration=s?.item?.duration_ms||1;
+          updatePlayButton();
+        }
+      }catch(_){}
+    },700);
+
+  }catch(e){
+    console.error(e);
+    status('PLAYBACK FAILED');
+    toast(e.message.length>120 ? e.message.slice(0,120)+'…' : e.message);
+  }
+}
+function setTrack(t){
+  state.track=t;
+  state.seed=hash(t.id||t.name||'x')*20;
+  state.manualMood=null;
+  state.mood=classify(t);
+  $('trackName').textContent=t.name||'UNTITLED';
+  $('artistName').textContent=(t.artists||[]).map(a=>a.name).join(' · ');
+  $('moodName').textContent='MOOD / '+state.mood+' · '+MOODS[state.mood].desc;
+  buildMoods();
+}
+
+function updatePlayButton(){$('play').textContent=state.playing?'Ⅱ':'▶'}
+function fmt(ms){let s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+
+/* =========================================================
+   6. SEARCH ANY SPOTIFY SONG
+   ========================================================= */
+async function search(){
+  const q=$('searchInput').value.trim();
+  if(!q){
+    toast('TYPE A SONG OR ARTIST');
+    $('searchInput').focus();
+    return;
+  }
+  if(!state.token){
+    toast('CONNECT SPOTIFY FIRST');
+    return;
+  }
+
+  $('results').innerHTML='<div style="padding:12px;opacity:.6;font-size:9px">SEARCHING SPOTIFY...</div>';
+  status('SEARCHING...');
+
+  try{
+    const url='/search?'+new URLSearchParams({
+      q:q,
+      type:'track',
+      limit:'10', // Spotify Search API currently allows max 10 results
+      market:'IN'
+    });
+
+    const r=await api(url);
+    const raw=await r.text();
+    let d={};
+    try{ d=JSON.parse(raw); }catch(_){}
+
+    if(!r.ok){
+      throw new Error('SEARCH '+r.status+': '+(d?.error?.message||raw||'Spotify rejected the request'));
+    }
+
+    const tracks=d.tracks?.items||[];
+
+    if(!tracks.length){
+      $('results').innerHTML='<div style="padding:12px;font-size:9px;opacity:.6">NO TRACKS FOUND</div>';
+      status('NO RESULTS');
+      return;
+    }
+
+    $('results').innerHTML=tracks.map((t,i)=>`
+      <div class="result" data-i="${i}">
+        <img src="${t.album?.images?.[2]?.url||t.album?.images?.[0]?.url||''}">
+        <div>
+          <div class="name">${esc(t.name)}</div>
+          <div class="artist">${esc((t.artists||[]).map(a=>a.name).join(' · '))}</div>
+        </div>
+      </div>`).join('');
+
+    [...$('results').children].forEach((el,i)=>{
+      el.onclick=()=>playTrack(tracks[i].uri);
+    });
+
+    status(tracks.length+' RESULTS');
+  }catch(e){
+    console.error(e);
+    $('results').innerHTML='<div style="padding:12px;font-size:9px;color:#ff6b6b">'+esc(e.message)+'</div>';
+    status('SEARCH FAILED');
+    toast(e.message.length>120 ? e.message.slice(0,120)+'…' : e.message);
+  }
+}
+/* =========================================================
+   7. MOOD UI
+   ========================================================= */
+function buildMoods(){
+  $('moods').innerHTML=Object.entries(MOODS).map(([m,v])=>
+    `<button class="moodBtn ${state.mood===m?'active':''}" data-mood="${m}">${m}</button>`
+  ).join('');
+  [...$('moods').children].forEach(b=>b.onclick=()=>{
+    state.manualMood=b.dataset.mood;
+    state.mood=b.dataset.mood;
+    $('moodName').textContent='MOOD / '+state.mood+' · '+MOODS[state.mood].desc;
+    buildMoods();
+  });
+}
+buildMoods();
+
+$('connectBtn').onclick=login;
+$('doSearch').onclick=search;
+$('searchInput').onkeydown=e=>{if(e.key==='Enter')search()};
+
+$('searchBtn').onclick=()=>{
+  $('searchPanel').classList.toggle('show');
+  $('moodPanel').classList.remove('show');
+  $('searchBtn').classList.toggle('active');
+  $('homeBtn').classList.remove('active');
+};
+$('moodsBtn').onclick=()=>{
+  $('moodPanel').classList.toggle('show');
+  $('searchPanel').classList.remove('show');
+  $('moodsBtn').classList.toggle('active');
+  $('homeBtn').classList.remove('active');
+};
+$('homeBtn').onclick=()=>{
+  $('searchPanel').classList.remove('show');
+  $('moodPanel').classList.remove('show');
+  $('searchBtn').classList.remove('active');
+  $('moodsBtn').classList.remove('active');
+  $('homeBtn').classList.add('active');
+};
+
+$('play').onclick=async()=>{
+  if(!state.player){
+    toast('CONNECT SPOTIFY FIRST');
+    return;
+  }
+  try{
+    await state.player.activateElement();
+    if(state.playing){
+      await state.player.pause();
+      state.playing=false;
+    }else if(state.track){
+      await state.player.resume();
+    }else{
+      toast('SEARCH FOR A SONG');
+      return;
+    }
+    updatePlayButton();
+  }catch(e){
+    console.error(e);
+    toast('PLAY/PAUSE FAILED: '+e.message);
+  }
+};
+$('stop').onclick=async()=>{
+  if(state.player)await state.player.pause();
+  state.playing=false;updatePlayButton();
+};
+$('prev').onclick=()=>state.player?.previousTrack();
+$('next').onclick=()=>state.player?.nextTrack();
+
+$('progress').oninput=e=>{
+  if(state.duration)state.player?.seek((Number(e.target.value)/1000)*state.duration);
+};
+
+setInterval(async()=>{
+  if(state.playing){
+    state.position=Math.min(state.duration,state.position+500);
+    $('progress').value=state.duration?state.position/state.duration*1000:0;
+  }
+  updateReaction();
+  $('cur').textContent=fmt(state.position);
+  $('dur').textContent=fmt(state.duration);
+},500);
+
+handleCallback();
+</script>
+</body>
+</html>
